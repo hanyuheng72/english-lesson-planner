@@ -15,16 +15,14 @@ import base64
 DEEPSEEK_KEY = st.secrets["DEEPSEEK_API_KEY"]
 QWEN_KEY = st.secrets["QWEN_API_KEY"]
 
-# 主大脑：DeepSeek 客户端（用于撰写教案和大纲）
 client_deepseek = OpenAI(
     api_key=DEEPSEEK_KEY, 
     base_url="https://api.deepseek.com/v1"
 )
 
-# 视觉眼睛：阿里云百炼通义千文客户端（用于解析图片、插画和排版）
 client_vision = OpenAI(
     api_key=QWEN_KEY,
-    base_url="https://dashscope.aliyuncs.com/compatible-mode/v1" # 阿里云百炼 OpenAI 兼容接口地址
+    base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
 )
 
 # 初始化 Session State
@@ -47,7 +45,7 @@ def parse_image_with_vision(image_bytes, description="这是一张课本页面")
             messages=[
                 {
                     "role": "user",
-                    "content": [
+                    "content=[
                         {
                             "type": "text",
                             "text": f"{description}。请：1. 提取所有文字。2. 描述插图、场景和排版。3. 总结核心教学点。"
@@ -80,7 +78,6 @@ def extract_text_cached(file_name, file_bytes, file_type, range_type, start, end
             
         elif file_type == 'pdf':
             if use_vision_for_pdf:
-                # PDF转图片再送千文视觉解析
                 doc = fitz.open(stream=file_bytes, filetype="pdf")
                 total = len(doc)
                 end_idx = min(total, end) if range_type == "自定义范围" else total
@@ -95,7 +92,6 @@ def extract_text_cached(file_name, file_bytes, file_type, range_type, start, end
                 extracted_text = "\n".join(results)
                 doc.close()
             else:
-                # 普通文本PDF解析
                 pdf_reader = pypdf.PdfReader(file_stream)
                 total = len(pdf_reader.pages)
                 end_idx = min(total, end) if range_type == "自定义范围" else total
@@ -126,20 +122,20 @@ def extract_text_cached(file_name, file_bytes, file_type, range_type, start, end
         
     return extracted_text.strip()
 
-# 3. 将 Markdown 转换为 Word 的辅助函数
+# 3. 将 Markdown 转换为 Word 的辅助函数（带美化排版与中英文字体底层强制修正）
 def convert_markdown_to_docx(lesson_plan, outline, quiz, title="教学设计方案"):
     doc = docx.Document()
     
-    # 页面边距设置（标准 A4 公文边距）
+    # 3.1 页面边距设置（标准 A4 公文边距）
     for section in doc.sections:
         section.top_margin = Inches(1)
         section.bottom_margin = Inches(1)
         section.left_margin = Inches(1)
         section.right_margin = Inches(1)
         
-    font_family_name = 'Microsoft YaHei'  # 微软雅黑作为主字体
+    font_family_name = 'Microsoft YaHei'  
     
-    # 强行设置东亚（中文）和西文属性，解决 Word 回退字体的 Bug
+    # 3.2 强行设置东亚（中文）和西文属性，解决 Word 回退字体的 Bug
     def set_run_font_and_format(run, font_name=font_family_name, size_pt=10.5, color_rgb=None, bold=None):
         run.font.name = font_name
         rPr = run._r.get_or_add_rPr()
@@ -464,6 +460,7 @@ with col2:
             st.warning("请输入单元主题！")
         else:
             try:
+                # 动态分配
                 if class_duration <= 25:
                     ppt_pages_guideline = "5 - 8 张"
                     plan_depth = "精炼紧凑型教案。聚焦核心语言点，重点突出。"
@@ -476,13 +473,31 @@ with col2:
 
                 # 增加对 [QUIZ_START] 的生成指令约束
                 system_prompt = (
-                    "你是一位极其严谨的高校与中小学英语教学及视觉设计专家。你需要根据用户提供的【学段阶段】、【课堂总时长限制】和【课本解析内容】，完成一份对应学段、中英文结合（Bilingual）的详细教案、授课大纲和一组随堂测验题。\n\n"
+                    "你是一位极其严谨的高校与中小学英语教学研究专家，同时也是一位前沿幻灯片视觉设计师。你需要根据用户提供的【学段阶段】、【课堂总时长限制】和【课本解析内容】，完成一份对应学段、中英文结合（Bilingual）的详细教案、高排版美感且面向下游生成器无缝解析的 PPT 视觉设计大纲和一组随堂测验题。\n\n"
                     "请务必严格使用以下带有中括号的标记来分割你输出的内容（不可拼错）：\n"
                     "[LESSON_PLAN_START]\n"
                     "此处撰写详细教案（符合选定学段）。教学步骤中的时间累计必须正好等于总时长。如果使用表格展示时间分配和环节，请务必保证表格结构规整。\n"
                     "[LESSON_PLAN_END]\n\n"
                     "[OUTLINE_START]\n"
-                    "此处撰写配套的 PPT 授课大纲（带设计元数据规范和每页幻灯片的分隔 ---）。\n"
+                    "此处撰写配套的【PPT 视觉设计大纲】。请严格按照以下结构化 Markdown 层次进行输出，不得使用任何省略号或占位符，每一页幻灯片上的所有展示文字必须是完整可读的文本（下游生成器会直接抓取并呈现在 PPT 页面上）：\n\n"
+                    "### 1. PPT Global Specifications (PPT全局视觉设计规范)\n"
+                    "- **Design Style**: [设计风格风格描述，须高度美观且贴近选定的授课课题，如：Minimalist Academic / Playful Cartoonish]\n"
+                    "- **Background Color**: [整套 PPT 背景色 Hex 编码，如：#FFFFFF]\n"
+                    "- **Primary Theme Color**: [整套 PPT 主色调 Hex 编码，如：#1B365D]\n"
+                    "- **Secondary Accent Color**: [整套 PPT 辅助强调色 Hex 编码，如：#E09F3E]\n"
+                    "- **Default Text Color**: [正文字体颜色 Hex 编码，如：#333333]\n"
+                    "- **Font Family**: [标题和正文字体，如：Arial, Microsoft YaHei]\n\n"
+                    "### 2. Slide Cards (单页幻灯片视觉与内容方案)\n"
+                    "--- (使用三个减号作为每张 Slide 的开始分界线)\n"
+                    "#### Slide 1: [单页幻灯片大标题]\n"
+                    "- **Layout Recommended**: [极其具体的单页排版布局说明，如：左右非对称分栏。左侧 65% 为无边框卡片盛放文字，右侧 35% 留白放入圆形配图容器]\n"
+                    "- **Visual & Image Cue**: [需要何种配图/插画的详情描述。须有画面的构图、核心元素、色彩搭配和艺术风格推荐。例如：扁平矢量化精美插图，画面中一个背着背包的旅行者正站在分岔路口前，手里拿着指南针，背景为柔和的浅灰色山峦线条，配色需与主色调呼应。]\n"
+                    "- **Points Content**:\n"
+                    "  - [要点 1：必须是完整可读的演示文本，严禁使用简写或省略号！]\n"
+                    "  - [要点 2：必须是完整可读的演示文本，严禁使用简写或省略号！]\n"
+                    "  - [要点 3：必须是完整可读的演示文本，严禁使用简写或省略号！]\n"
+                    "- **Teacher Notes**: [教师在这页PPT要讲的完整话语、互动提问及过渡语]\n\n"
+                    "--- (以此类推，继续写完后续幻灯片内容，总页数控制在 10 - 15 页左右)\n"
                     "[OUTLINE_END]\n\n"
                     "[QUIZ_START]\n"
                     "此处撰写适合该学段和课本内容的随堂测验与课堂互动方案：\n"
@@ -507,7 +522,7 @@ with col2:
                 {final_text if final_text else "（未提供具体课本，请围绕主题进行该学段的通用高水准教学设计）"}
                 """
                 
-                st.info(f"⚡ AI 正在实时为您撰写整体教学包方案...")
+                st.info(f"⚡ AI 正在实时为您撰写整体教学包方案（含高精度 PPT 设计元数据）...")
                 stream_placeholder = st.empty()
                 raw_result = ""
                 
@@ -549,7 +564,7 @@ with col2:
                 st.session_state['generated_plan'] = lesson_plan_data
                 st.session_state['generated_outline'] = outline_data
                 st.session_state['generated_quiz'] = quiz_data
-                st.success("🎉 教学包（教案 + 大纲 + 随堂小练）生成完毕！")
+                st.success("🎉 教学包（教案 + 视觉大纲 + 随堂小练）生成完毕！")
                 
             except Exception as e:
                 st.error(f"处理出错: {e}")
@@ -559,7 +574,7 @@ with col2:
     st.write("💬 **“智能副驾驶”二次局部微调（Tweak Engine）**")
     tweak_text = st.text_input(
         "在此输入修改指令，对上方已生成的内容进行针对性微改：",
-        placeholder="例如：'把随堂随练的第2道选择题换个简单点的词汇'、'在教案的导入环节加入一首拍手儿歌'",
+        placeholder="例如：'把PPT大纲的主色色号调整为薄荷绿'、'让第3张Slide的排版变为居中三列卡片'",
         key="tweak_input"
     )
     tweak_btn = st.button("🔧 提交修改指令", use_container_width=True)
@@ -574,7 +589,7 @@ with col2:
                     "请你根据用户的修改建议，对原有的三部分内容进行精准微调或重写。\n\n"
                     "为了保证系统能正确解析和分栏显示，请您**必须完整输出微调后的全部三部分内容**，并依然严格套用中括号标记进行分隔：\n"
                     "[LESSON_PLAN_START]\n微调后的完整教案...\n[LESSON_PLAN_END]\n\n"
-                    "[OUTLINE_START]\n微调后的完整授课大纲...\n[OUTLINE_END]\n\n"
+                    "[OUTLINE_START]\n微调后的完整授课大纲（带设计元数据、配色色号、字体和详细插画排版描述）...\n[OUTLINE_END]\n\n"
                     "[QUIZ_START]\n微调后的完整随堂随练与活动设计...\n[QUIZ_END]\n"
                 )
                 
