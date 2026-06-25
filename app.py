@@ -11,7 +11,6 @@ import fitz  # PyMuPDF，用于将PDF转图片
 import base64
 
 # 1. 初始化客户端
-# 从 Streamlit 环境变量中安全读取 API Key
 DEEPSEEK_KEY = st.secrets["DEEPSEEK_API_KEY"]
 QWEN_KEY = st.secrets["QWEN_API_KEY"]
 
@@ -122,7 +121,7 @@ def extract_text_cached(file_name, file_bytes, file_type, range_type, start, end
         
     return extracted_text.strip()
 
-# 3. 将 Markdown 转换为 Word 的辅助函数（带美化排版与中英文字体底层强制修正）
+# 3. 将 Markdown 转换为 Word 的辅助函数
 def convert_markdown_to_docx(lesson_plan, outline, quiz, title="教学设计方案"):
     doc = docx.Document()
     
@@ -373,7 +372,6 @@ with col1:
             
             use_vision_pdf = st.checkbox("🔍 开启 PDF 深度视觉扫描 (读图解析)", value=False)
             if use_vision_pdf:
-                # 替换掉了波浪号 ~ 避免被 markdown 语法错误识别成删除线
                 st.warning("⚠️ 提醒：深度视觉扫描会逐页调用大模型进行解析，生成速度会慢一些（每页约 3 至 5 秒）。建议配合下方的“自定义范围”限制每次只扫描要讲的 2 至 3 页。")
             st.write("---")
             
@@ -419,7 +417,7 @@ with col1:
     final_text = ""
     if uploaded_file is not None:
         # 非缓存区域安全的气泡提示
-        if file_ext in ['png', 'jpg', 'jpeg'] or (file_ext == 'pdf' and use_vision_pdf):
+        if file_ext in ['png', 'jpg', 'jpeg'] or (file_ext == 'pdf' and use_vision_for_pdf):
             st.toast("🔮 通义千文正在解析视觉内容...", icon="👁️")
             
         final_text = extract_text_cached(
@@ -460,7 +458,6 @@ with col2:
             st.warning("请输入单元主题！")
         else:
             try:
-                # 动态分配
                 if class_duration <= 25:
                     ppt_pages_guideline = "5 - 8 张"
                     plan_depth = "精炼紧凑型教案。聚焦核心语言点，重点突出。"
@@ -471,19 +468,29 @@ with col2:
                     ppt_pages_guideline = "18 - 25 张"
                     plan_depth = "高容量、高深度教案。设计 2-3 个学生高阶产出任务，步骤丰富。"
 
-                # 极其细致的多模态、高保真、无省略的系统提示词
+                # 极其细致的多模态、高保真、无省略的系统提示词（升级：高对比度深色背景指令 + 真实 Unsplash 配图库）
                 system_prompt = (
                     "你是一位极其严谨的高校与中小学英语教学研究专家，同时也是一位前沿幻灯片视觉设计师。\n"
-                    "你需要完成一份详细教案、一套高排版美感且面向下游生成器无缝解析的【高保真 PPT 视觉大纲】、以及一组随堂测试题。\n\n"
-                    "【⚠️ 核心排版美学与绝对对比度规范（防混淆设计）】\n"
-                    "为了确保文字和背景绝对清晰易读，必须严格遵守以下颜色对照标准进行色号输出：\n"
-                    "- 若背景色为深色系（如深海蓝 #1A365D），则该页幻灯片的所有前景文字（标题、正文等）必须强制设为 纯白色 (#FFFFFF) 或 浅亮黄 (#F1C40F)。\n"
-                    "- 若背景色为淡雅色系（如冷灰白 #F4F7F6），则标题文字必须强制设为 深海蓝 (#1A365D)，正文文字设为 炭灰色 (#333333)，强调突出词设为 活力橙 (#E67E22)。\n"
-                    "绝对禁止在淡色背景上使用任何灰色或低对比度彩色字体，也禁止在深色背景上使用深灰、墨绿等暗色字体！\n\n"
+                    "你需要完成一份详细教案、一套高排版美感且面向下游生成器无缝解析的【高保真 PPT 视觉大纲】、以及一组随堂测验题。\n\n"
+                    "【⚠️ 核心对比度控制（解决白字在白底上看不清的问题）】\n"
+                    "因为用户的下游 PPT 生成器默认使用您的全局色号，为了彻底解决文字与背景色温混淆的问题，请遵守以下设计规范：\n"
+                    "- 所有幻灯片背景色统一设定为深海军蓝 (#1A365D)，以此在视觉上完美托出白色 (#FFFFFF) 或鲜亮黄 (#F1C40F) 的大标题，确保绝对对比度与易读性！\n"
+                    "- 幻灯片内部的内容卡片容器（Containers）统一设定为纯白色 (#FFFFFF) 或浅亮色 (#F8F9FA)，卡片内部的正文文字设定为深灰色 (#333333) 或深海蓝 (#1A365D)，确保白底黑字，对比度极高！\n"
+                    "绝对禁止在浅色背景上输出白色文字！\n\n"
+                    "【⚠️ 真实插画配图规范（解决 PPT 没配图的问题）】\n"
+                    "在每一张 Slide 卡片的 'Visual & Image Cue' 字段中，你必须直接输出以下列表中与当前页面主题最契合的高清、免版权 Unsplash 真实图片网络链接（使用标准 Markdown 图片格式 `![Description](URL)`），以便用户的 PPT 生成器可以直接提取并下载显示：\n"
+                    "- 职场建筑/封面配图：`![Office](https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=600&q=80)`\n"
+                    "- 商务精英/正式西装：`![Formal Suit](https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&w=600&q=80)`\n"
+                    "- 休闲装/硅谷程序员：`![Casual Wear](https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=600&q=80)`\n"
+                    "- 职业规划/团队合作：`![Career](https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=600&q=80)`\n"
+                    "- 词汇学习/专业讨论：`![Learning](https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=600&q=80)`\n"
+                    "- 结构分析/逻辑框架：`![Structure](https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=600&q=80)`\n"
+                    "- 随堂练习/笔头测试：`![Practice](https://images.unsplash.com/photo-1488190211105-8b0e65b80b4e?auto=format&fit=crop&w=600&q=80)`\n"
+                    "- 迷你辩论/思想碰撞：`![Debate](https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?auto=format&fit=crop&w=600&q=80)`\n"
+                    "- 思政总结/职业精神：`![Professionalism](https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&w=600&q=80)`\n"
+                    "- 课后作业/行动计划：`![Homework](https://images.unsplash.com/photo-1506784983877-45594efa4cbe?auto=format&fit=crop&w=600&q=80)`\n\n"
                     "【⚠️ 严格的无省略规范（No Ellipsis Guarantee）】\n"
-                    "下游生成器会直接抓取你输出的 Slide 卡片生成演示文件，因此你必须输出 100% 完整的内容：\n"
-                    "- 严禁使用“以此类推”、“此处为课文内容”、“以下省略”等任何概括性或占位语句！\n"
-                    "- 每一张 Slide 上的所有英文例句、词汇拼写、中文释义、游戏规则、课后作业必须以完全可直接朗读和展示的终态文字输出！\n\n"
+                    "- 严禁使用任何“以此类推”、“此处省略”或占位符，每一张 Slide 的 Points Content 必须输出完整、详细、无缺失、可以直接朗读的演示文本！\n\n"
                     "请务必严格使用以下带有中括号的标记来分割你输出的内容（不可拼错）：\n"
                     "[LESSON_PLAN_START]\n"
                     "此处撰写详细教案（符合选定学段）。教学步骤中的时间累计必须正好等于总时长。如果使用表格展示时间分配和环节，请务必保证表格结构规整。\n"
@@ -491,22 +498,22 @@ with col2:
                     "[OUTLINE_START]\n"
                     "此处撰写配套的【PPT 视觉设计大纲】。请严格按照以下结构化 Markdown 层次进行输出：\n\n"
                     "### 1. PPT Global Specifications (PPT全局视觉设计规范)\n"
-                    "- **Design Style**: [设计风格风格描述，须高度美观且贴近选定的授课课题]\n"
-                    "- **Background Color**: [整套 PPT 背景色 Hex 编码]\n"
-                    "- **Primary Theme Color**: [整套 PPT 主色调 Hex 编码]\n"
-                    "- **Secondary Accent Color**: [整套 PPT 辅助强调色 Hex 编码]\n"
-                    "- **Default Text Color**: [正文字体颜色 Hex 编码]\n"
-                    "- **Font Family**: [标题和正文字体]\n\n"
+                    "- **Design Style**: [设计风格风格描述，如：Modern Professional Grid / Minimalist Academic]\n"
+                    "- **Background Color**: [整套 PPT 背景色 Hex 编码，强制设为 #1A365D]\n"
+                    "- **Primary Theme Color**: [主色调 Hex 编码，推荐 #FFFFFF 或 #F1C40F]\n"
+                    "- **Secondary Accent Color**: [辅助强调色 Hex 编码，推荐 #E67E22]\n"
+                    "- **Default Text Color**: [正文字体颜色 Hex 编码，推荐 #333333 或 #1A365D]\n"
+                    "- **Font Family**: [标题和正文字体，如：Arial, Microsoft YaHei]\n\n"
                     "### 2. Slide Cards (单页幻灯片内容与高精度版式方案)\n"
                     "请根据课堂时长，严格将幻灯片卡片总页数控制在 {ppt_pages_guideline} 页左右。\n"
                     "--- (使用三个减号作为每张 Slide 的开始分界线)\n"
                     "#### Slide 1: [单页幻灯片大标题]\n"
-                    "- **Layout Recommended**: [极其具体的单页空间排版与栅格布局说明。例如：左右非对称分栏。左侧 60% 宽度为深蓝色块背景，内置白色大号加粗主标题与小号副标题；右侧 40% 为卡片式圆角容器 (#FFFFFF，圆角 12px)，内置核心矢量配图。]\n"
-                    "- **Colors & Typography**: [此页具体的精细配色与字号方案。格式必须为：前景色-背景色成对标注，例如：背景使用 #F4F7F6。主标题使用 #1B365D (26pt/Bold)。正文使用 #333333 (12pt)。重点词使用 #E09F3E (加粗)。确保前景色与背景色有极高对比度。]\n"
-                    "- **Visual & Image Cue**: [需要何种配图/插画的详情描述。包含画面具体的构图、核心元素、艺术风格（扁平矢量、3D渲染、实景写实等）和色彩。例如：高精细扁平矢量化插画。画面中一个背着背包的年轻男士立于分岔路口，手持指南针，背景为简洁的几何写字楼轮廓与柔和的淡色莫兰迪圆形色块组合，配色需呼应主色 #1A365D 保持视觉统一。]\n"
+                    "- **Layout Recommended**: [极其具体的单页空间排版与栅格布局说明。例如：左右非对称分栏。左侧 55% 宽度为深蓝色块背景，内置白色大号加粗主标题与小号副标题；右侧 45% 为卡片式圆角容器 (#FFFFFF，圆角 12px)，内置核心矢量配图。]\n"
+                    "- **Colors & Typography**: [此页具体的精细配色与字号方案。格式必须为：前景色-背景色成对标注，例如：幻灯片整体背景为 #1A365D。大标题使用 #FFFFFF (28pt/Bold)。卡片背景使用 #FFFFFF。卡片正文使用 #333333 (12pt)。重点强调词使用 #E67E22 (加粗)。确保前景色与背景色有极高对比度。]\n"
+                    "- **Visual & Image Cue**: [必须从上方的真实图片数据库中，挑选最合适的一个 Markdown 图片格式链接直接输出。例如：`![Office](https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=600&q=80)`]\n"
                     "- **Points Content**:\n"
                     "  - [要点 1：必须是完整、无省略的演示文本，直接呈现在 PPT 上]\n"
-                    "  - [要点 2：必须是完整、无省略的演示文本，直接呈现在 PPT 上]\n"
+                    "  - [要点 2：必须 is 完整、无省略的演示文本，直接呈现在 PPT 上]\n"
                     "  - [要点 3：必须是完整、无省略的演示文本，直接呈现在 PPT 上]\n"
                     "- **Teacher Notes**: [教师在这个幻灯片页面讲解时的完整手稿讲义、提问、以及过渡引导句]\n\n"
                     "--- (以此类推，继续写完后续所有幻灯片内容)\n"
