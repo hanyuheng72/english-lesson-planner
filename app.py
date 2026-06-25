@@ -11,6 +11,7 @@ import fitz  # PyMuPDF，用于将PDF转图片
 import base64
 
 # 1. 初始化客户端
+# 从 Streamlit 环境变量中安全读取 API Key
 DEEPSEEK_KEY = st.secrets["DEEPSEEK_API_KEY"]
 QWEN_KEY = st.secrets["QWEN_API_KEY"]
 
@@ -372,6 +373,7 @@ with col1:
             
             use_vision_pdf = st.checkbox("🔍 开启 PDF 深度视觉扫描 (读图解析)", value=False)
             if use_vision_pdf:
+                # 替换掉了波浪号 ~ 避免被 markdown 语法错误识别成删除线
                 st.warning("⚠️ 提醒：深度视觉扫描会逐页调用大模型进行解析，生成速度会慢一些（每页约 3 至 5 秒）。建议配合下方的“自定义范围”限制每次只扫描要讲的 2 至 3 页。")
             st.write("---")
             
@@ -417,7 +419,7 @@ with col1:
     final_text = ""
     if uploaded_file is not None:
         # 非缓存区域安全的气泡提示
-        if file_ext in ['png', 'jpg', 'jpeg'] or (file_ext == 'pdf' and use_vision_for_pdf):
+        if file_ext in ['png', 'jpg', 'jpeg'] or (file_ext == 'pdf' and use_vision_pdf):
             st.toast("🔮 通义千文正在解析视觉内容...", icon="👁️")
             
         final_text = extract_text_cached(
@@ -513,7 +515,7 @@ with col2:
                     "- **Visual & Image Cue**: [必须从上方的真实图片数据库中，挑选最合适的一个 Markdown 图片格式链接直接输出。例如：`![Office](https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=600&q=80)`]\n"
                     "- **Points Content**:\n"
                     "  - [要点 1：必须是完整、无省略的演示文本，直接呈现在 PPT 上]\n"
-                    "  - [要点 2：必须 is 完整、无省略的演示文本，直接呈现在 PPT 上]\n"
+                    "  - [要点 2：必须是完整、无省略的演示文本，直接呈现在 PPT 上]\n"
                     "  - [要点 3：必须是完整、无省略的演示文本，直接呈现在 PPT 上]\n"
                     "- **Teacher Notes**: [教师在这个幻灯片页面讲解时的完整手稿讲义、提问、以及过渡引导句]\n\n"
                     "--- (以此类推，继续写完后续所有幻灯片内容)\n"
